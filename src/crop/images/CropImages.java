@@ -1,18 +1,25 @@
 package crop.images;
 
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import javafx.application.Application;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
+import javafx.embed.swing.SwingFXUtils;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
 import javafx.scene.control.Button;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.image.WritableImage;
 import javafx.scene.layout.Border;
 import javafx.scene.layout.BorderStroke;
 import javafx.scene.layout.BorderStrokeStyle;
@@ -22,13 +29,15 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javax.imageio.ImageIO;
 
 public class CropImages extends Application {
     
-    private static final String IMAGE_CREDIT_URL = "http://www.nasa.gov/image-feature/global-mosaic-of-pluto-in-true-color";
     private static final String IMAGE_URL = "https://www.nasa.gov/sites/default/files/thumbnails/image/global-mosaic-of-pluto-in-true-color.jpg";
     private static final int MIN_PIXELS = 10;
+    Stage primaryStage;
     
     @Override
     public void start(Stage stage) throws IOException {
@@ -39,7 +48,7 @@ public class CropImages extends Application {
 //        stage.setScene(scene);
 //        stage.show();
 
-
+        this.primaryStage = stage;
     
         Image image = new Image(IMAGE_URL);
         double width = image.getWidth();
@@ -166,11 +175,79 @@ public class CropImages extends Application {
     private HBox createButtons(double width, double height, ImageView imageView) {
         Button reset = new Button("Reset");
         reset.setOnAction(e -> reset(imageView, width, height));
-        HBox buttons = new HBox(10, reset);
+        Button btnCrop = new Button("Crop");
+        btnCrop.setOnAction(e -> {
+            Bounds selectionBounds = imageView.getBoundsInParent();
+
+            // show bounds info
+            System.out.println( "Selected area: " + selectionBounds);
+
+            // crop the image
+            crop(imageView, selectionBounds);
+        });
+        HBox buttons = new HBox(10, btnCrop, reset);
         buttons.setAlignment(Pos.CENTER);
         buttons.setPadding(new Insets(10));
         return buttons;
     }
+    
+    
+    
+    //crop image
+    private void crop(ImageView imageView, Bounds bounds) {
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("image(*.jpg)", "*.jpg"));
+        fileChooser.setTitle("Save Image");
+
+        File file = fileChooser.showSaveDialog( primaryStage);
+        if (file == null)
+            return;
+
+        int width = (int) bounds.getWidth();
+        int height = (int) bounds.getHeight();
+
+        SnapshotParameters parameters = new SnapshotParameters();
+        parameters.setFill(Color.TRANSPARENT);
+        parameters.setViewport(new Rectangle2D( bounds.getMinX(), bounds.getMinY(), width, height));
+
+        WritableImage wi = new WritableImage( width, height);
+        imageView.snapshot(parameters, wi);
+
+        // save image 
+        // !!! has bug because of transparency (use approach below) !!!
+        // --------------------------------
+//        try {
+//          ImageIO.write(SwingFXUtils.fromFXImage( wi, null), "jpg", file);
+//      } catch (IOException e) {
+//          e.printStackTrace();
+//      }
+
+
+        // save image (without alpha)
+        // --------------------------------
+        BufferedImage bufImageARGB = SwingFXUtils.fromFXImage(wi, null);
+        BufferedImage bufImageRGB = new BufferedImage(bufImageARGB.getWidth(), bufImageARGB.getHeight(), BufferedImage.OPAQUE);
+
+        Graphics2D graphics = bufImageRGB.createGraphics();
+        graphics.drawImage(bufImageARGB, 0, 0, null);
+
+        try {
+
+            ImageIO.write(bufImageRGB, "jpg", file); 
+
+            System.out.println( "Image saved to " + file.getAbsolutePath());
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        graphics.dispose();
+
+    }
+    
+    
+    
 
     // reset to the top left:
     private void reset(ImageView imageView, double width, double height) {
